@@ -24,6 +24,7 @@ Main features:
  * It works well on an overloaded Internet connection
  * It never produces an inconsistent mirror including while mirroring
  * It works on all POSIX compliant systems with Perl and wget
+ * It allows packages to be excluded using regular expressions
 
 =head1 COMMENTS
 
@@ -109,6 +110,7 @@ my %config_variables = (
     "_autoclean"  => 0,
     "_tilde"      => 0,
     "limit_rate"  => '100m',
+    "excluded"    => '',
     "run_postmirror"       => 1,
     "auth_no_challenge"    => 0,
     "no_check_certificate" => 0,
@@ -127,6 +129,8 @@ my @index_urls;
 my @childrens       = ();
 my %skipclean       = ();
 my %clean_directory = ();
+
+my @exclusions      = ();
 
 ######################################################################################
 ## Setting up $config_file variable
@@ -214,6 +218,19 @@ sub unlock_aptmirror
 {
     close(LOCK_FILE);
     unlink( get_variable("var_path") . "/apt-mirror.lock" );
+}
+
+sub excluded($)
+{
+    my $filename = shift;
+
+    return 0 unless @exclusions;
+    my $rc = 0;
+    for my $excl (@exclusions) {
+        $rc |= ($filename =~ /$excl/i);
+    }
+
+    return $rc;
 }
 
 sub download_urls
@@ -344,6 +361,8 @@ foreach my $needed_directory (@needed_directories)
 }
 #
 #######################################################################################
+# Set the exclusions
+@exclusions = split /,/, get_variable("excluded");
 
 lock_aptmirror();
 
@@ -621,6 +640,7 @@ foreach ( keys %urls_to_download )
 open FILES_ALL, ">" . get_variable("var_path") . "/ALL" or die("apt-mirror: can't write to intermediate file (ALL)");
 open FILES_NEW, ">" . get_variable("var_path") . "/NEW" or die("apt-mirror: can't write to intermediate file (NEW)");
 open FILES_MD5, ">" . get_variable("var_path") . "/MD5" or die("apt-mirror: can't write to intermediate file (MD5)");
+open FILES_SKIP, ">" . get_variable("var_path") . "/SKIP" or die("apt-mirror: can't write to intermediate file (SKIP)");
 
 my %stat_cache = ();
 
@@ -701,7 +721,11 @@ sub process_index_gz
             if ( need_update( $mirror . "/" . $lines{"Filename:"}, $lines{"Size:"} ) )
             {
                 print FILES_NEW remove_double_slashes( $uri . "/" . $lines{"Filename:"} ) . "\n";
-                add_url_to_download( $uri . "/" . $lines{"Filename:"}, $lines{"Size:"} );
+                if (excluded($lines{"Filename:"})) {
+                    print FILES_SKIP "Skipping ", $lines{"Filename:"}, "\n";
+                } else {
+                    add_url_to_download( $uri . "/" . $lines{"Filename:"}, $lines{"Size:"} );
+                }
             }
         }
         else
@@ -717,7 +741,12 @@ sub process_index_gz
                 if ( need_update( $mirror . "/" . $lines{"Directory:"} . "/" . $file[2], $file[1] ) )
                 {
                     print FILES_NEW remove_double_slashes( $uri . "/" . $lines{"Directory:"} . "/" . $file[2] ) . "\n";
-                    add_url_to_download( $uri . "/" . $lines{"Directory:"} . "/" . $file[2], $file[1] );
+                    my $_tmp = $lines{"Directory:"} . "/" . $file[2];
+                    if (excluded($_tmp)) {
+                        print FILES_SKIP "Skipping ", $_tmp, "\n";
+                    } else {
+                        add_url_to_download( $uri . "/" . $lines{"Directory:"} . "/" . $file[2], $file[1] );
+                    }
                 }
             }
         }
@@ -772,6 +801,7 @@ print "]\n\n";
 close FILES_ALL;
 close FILES_NEW;
 close FILES_MD5;
+close FILES_SKIP;
 
 ######################################################################################
 ## Main download

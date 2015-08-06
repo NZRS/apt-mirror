@@ -13,6 +13,11 @@ set use_proxy         off
 set http_proxy        127.0.0.1:3128
 set proxy_user        user
 set proxy_password    password
+# If you want to exclude some packages from being downloaded, use this
+# setting.
+set excluded          \Wthunderbird\W
+# If you need more than one pattern, separate them using commas
+# set excluded  \Wwebkit\W,firefox\-*
 
 deb http://archive.ubuntu.com/ubuntu precise main restricted universe multiverse
 deb http://archive.ubuntu.com/ubuntu precise-security main restricted universe multiverse
